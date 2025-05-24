@@ -1,4 +1,4 @@
-package ipv6randomizer
+package randomipv6
 
 import (
 	"crypto/rand"
@@ -7,51 +7,62 @@ import (
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+	"github.com/caddyserver/caddy/v2/modules/caddyhttp/httpcaddyfile"
 )
 
-// init registers the module.
 func init() {
-	caddy.RegisterModule(RandomIPv6Header{})
+	// Register the module.
+	caddy.RegisterModule(RandomIPv6{})
+	// Register the Caddyfile directive and its parsing function.
+	httpcaddyfile.RegisterHandlerDirective("randomipv6", parseCaddyfile)
+	httpcaddyfile.RegisterDirectiveOrder("randomipv6", httpcaddyfile.After, "templates")
 }
 
-// RandomIPv6Header is a Caddy module that generates a random IPv6 address on each request
-// and sets it into the X-Real-IP and X-Forwarded-For headers.
-type RandomIPv6Header struct{}
+// RandomIPv6 is a Caddy HTTP middleware module that injects a randomized IPv6
+// address into the X-Real-IP and X-Forwarded-For headers per request.
+type RandomIPv6 struct{}
 
 // CaddyModule returns the Caddy module information.
-func (RandomIPv6Header) CaddyModule() caddy.ModuleInfo {
+func (RandomIPv6) CaddyModule() caddy.ModuleInfo {
 	return caddy.ModuleInfo{
-		ID:  "http.handlers.random_ipv6_header",
-		New: func() caddy.Module { return new(RandomIPv6Header) },
+		ID:  "http.handlers.randomipv6",
+		New: func() caddy.Module { return new(RandomIPv6) },
 	}
 }
 
-// ServeHTTP implements the caddyhttp.MiddlewareHandler interface.
-// It generates a new random IPv6 address for each incoming request and assigns it to the headers.
-func (rh RandomIPv6Header) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
-	randomIP, err := generateRandomIPv6()
-	if err == nil {
-		// Overwrite (or set) the headers with the newly generated randomized IPv6 address.
-		r.Header.Set("X-Real-IP", randomIP)
-		r.Header.Set("X-Forwarded-For", randomIP)
+// ServeHTTP generates a new random IPv6 address for each request, sets it into
+// the required headers, and then passes control to the next handler.
+func (r *RandomIPv6) ServeHTTP(w http.ResponseWriter, req *http.Request, next caddyhttp.Handler) error {
+	ip, err := generateRandomIPv6()
+	if err != nil {
+		return err
 	}
-	// Continue to the next handler in the chain.
-	return next.ServeHTTP(w, r)
+
+	req.Header.Set("X-Real-IP", ip)
+	req.Header.Set("X-Forwarded-For", ip)
+
+	return next.ServeHTTP(w, req)
 }
 
-// generateRandomIPv6 creates a random IPv6 address.
-// It generates 16 random bytes and converts them to the canonical IPv6 string format.
+// generateRandomIPv6 creates a random IPv6 address by reading 16 random bytes.
 func generateRandomIPv6() (string, error) {
-	bytes := make([]byte, 16)
-	if _, err := rand.Read(bytes); err != nil {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	ip := net.IP(bytes)
+	ip := net.IP(b)
 	return ip.String(), nil
 }
 
-// Interface guards to ensure the module satisfies the Caddy interfaces.
+// parseCaddyfile is the function responsible for parsing the `randomipv6` directive
+// inside a Caddyfile and applying it correctly.
+func parseCaddyfile(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
+	module := new(RandomIPv6)
+	return module, nil
+}
+
+// Interface guards
 var (
-	_ caddy.Module                = (*RandomIPv6Header)(nil)
-	_ caddyhttp.MiddlewareHandler = (*RandomIPv6Header)(nil)
+	_ caddy.Module                = (*RandomIPv6)(nil)
+	_ caddyhttp.MiddlewareHandler = (*RandomIPv6)(nil)
 )
