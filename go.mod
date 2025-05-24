@@ -1,4 +1,4 @@
-module randomipv6
+module github.com/SolSoCoG/caddy-randomipv6
 
 go 1.24.3
 
